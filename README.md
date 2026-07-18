@@ -1,6 +1,6 @@
 # Battleship vs AI
 
-Playable URL: https://ishitajain15-source.github.io/battleship-vs-ai/
+Playable URL: https://ishitajain15-source.github.io/battleship-ai-test/
 
 ## How to play
 
