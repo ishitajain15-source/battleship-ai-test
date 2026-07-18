@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Battleship vs AI</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#131e32;--ink:#e8f0ff;--muted:#9fb0ca;--line:#334766;--water:#17365f;--water2:#1e4d82;--miss:#85a3bd;--hit:#ffab4c;--sunk:#ef5968;--ship:#4cc9a1;--accent:#7dd3fc}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#172a49 0,#0b1220 48%);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1160px;margin:auto;padding:24px 16px 44px}header{text-align:center;margin-bottom:20px}h1{margin:0;font-size:clamp(2rem,5vw,3.2rem);letter-spacing:.04em}h2{margin:0;font-size:1.2rem}.subtitle{margin:4px 0;color:var(--muted)}button{border:1px solid var(--accent);border-radius:8px;padding:10px 16px;background:#164467;color:#fff;cursor:pointer;font-weight:700}button:hover:not(:disabled){background:#216189}button:disabled{opacity:.45;cursor:not-allowed}.toolbar{display:flex;justify-content:center;gap:12px;align-items:center;margin:14px 0}.status{min-height:30px;text-align:center;color:#d8e6fa;font-weight:700}.boards{display:grid;grid-template-columns:1fr 1fr;gap:26px}.panel{background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 10px 30px #0003}.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:12px}.tracker{font-size:.82rem;color:var(--muted);text-align:right}.tracker span{display:block}.grid-wrap{display:grid;grid-template-columns:22px 1fr;grid-template-rows:22px 1fr;gap:4px}.column-labels{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;text-align:center;font-size:.72rem;color:var(--muted)}.row-labels{display:grid;grid-template-rows:repeat(10,1fr);gap:3px;align-items:center;text-align:center;font-size:.72rem;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(10,1fr);gap:3px;aspect-ratio:1}.cell{min-width:0;position:relative;border:1px solid #34608c;border-radius:3px;background:var(--water);color:#fff;font-size:clamp(.65rem,2vw,1rem);font-weight:800;display:grid;place-items:center}.cell:not(:disabled){cursor:pointer}.cell:not(:disabled):hover{background:var(--water2);outline:2px solid var(--accent);z-index:1}.cell.ship{background:var(--ship);border-color:#a4f2d9;color:#08231e}.cell.miss{background:var(--miss);border-color:#c1d6e5;color:#122335}.cell.hit{background:var(--hit);border-color:#ffe0a7;color:#3e2205}.cell.sunk{background:var(--sunk);border-color:#ffb0b8;color:#3c0810}.legend{display:flex;flex-wrap:wrap;gap:10px 16px;margin-top:13px;color:var(--muted);font-size:.82rem}.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:4px;background:var(--water);border:1px solid #34608c}.legend .lship{background:var(--ship)}.legend .lmiss{background:var(--miss)}.legend .lhit{background:var(--hit)}.legend .lsunk{background:var(--sunk)}.instructions{margin:24px auto 0;max-width:760px;color:var(--muted);text-align:center;font-size:.92rem}.game-over{color:#ffd166;font-size:1.15rem}
+@media(max-width:760px){main{padding:18px 10px 32px}.boards{grid-template-columns:1fr;gap:16px}.panel{padding:12px}.cell{font-size:.72rem}.tracker{font-size:.75rem}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>Battleship <span aria-hidden="true">⚓</span> vs AI</h1><p class="subtitle">Find and sink the hidden fleet.</p></header>
+<div class="toolbar"><button id="randomize">Re-randomize fleet</button><button id="new-game" hidden>New game</button></div>
+<div id="status" class="status" role="status" aria-live="polite"></div>
+<section class="boards">
+<article class="panel"><div class="panel-head"><h2>Your Fleet</h2><div id="player-tracker" class="tracker"></div></div><div class="grid-wrap"><div></div><div id="player-cols" class="column-labels"></div><div id="player-rows" class="row-labels"></div><div id="player-grid" class="grid" aria-label="Your fleet grid"></div></div></article>
+<article class="panel"><div class="panel-head"><h2>Enemy Waters</h2><div id="enemy-tracker" class="tracker"></div></div><div class="grid-wrap"><div></div><div id="enemy-cols" class="column-labels"></div><div id="enemy-rows" class="row-labels"></div><div id="enemy-grid" class="grid" aria-label="Enemy grid"></div></div></article>
+</section>
+<div class="legend"><span><i></i>Untried</span><span><i class="lship"></i>Your ship</span><span><i class="lmiss"></i>Miss</span><span><i class="lhit"></i>Hit</span><span><i class="lsunk"></i>Sunk</span></div>
+<p class="instructions">You fire first. Click a cell in Enemy Waters to attack. Ships may touch, but never overlap.</p>
+</main>
+<script>
+'use strict';
+// Fleet definitions used by both sides.
+const FLEET=[['Carrier',5],['Battleship',4],['Cruiser',3],['Submarine',3],['Destroyer',2]];
+let player,enemy,playerShots,aiShots,aiUnresolved,aiQueue,turn,gameOver;
+const $=id=>document.getElementById(id);
+const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+
+// Return a fresh empty 10 by 10 board.
+function emptyBoard(){return Array.from({length:10},()=>Array.from({length:10},()=>null))}
+// Randomly place every ship without overlap.
+function placeFleet(){const board=emptyBoard(),ships=[];for(const [name,size] of FLEET){let placed=false;while(!placed){const horizontal=Math.random()<.5,r=Math.floor(Math.random()*(horizontal?10:11-size)),c=Math.floor(Math.random()*(horizontal?11-size:10)),cells=[];for(let i=0;i<size;i++)cells.push([r+(horizontal?0:i),c+(horizontal?i:0)]);if(cells.every(([x,y])=>!board[x][y])){const ship={name,size,cells,hits:new Set(),sunk:false};cells.forEach(([x,y])=>board[x][y]=ship);ships.push(ship);placed=true}}}return {board,ships}}
+// Create row and column coordinate labels.
+function renderLabels(){for(const side of ['player','enemy']){$(`${side}-cols`).innerHTML=Array.from({length:10},(_,i)=>`<span>${i+1}</span>`).join('');$(`${side}-rows`).innerHTML=Array.from({length:10},(_,i)=>`<span>${String.fromCharCode(65+i)}</span>`).join('')}}
+// Update a fleet tracker with afloat and sunk ships.
+function renderTracker(side,state){$(`${side}-tracker`).innerHTML=state.ships.map(s=>`<span>${s.sunk?'✓':'•'} ${s.name} (${s.size})</span>`).join('')}
+// Draw one board, hiding enemy ships until game over.
+function renderBoard(side,state,shots,reveal=false){const grid=$(`${side}-grid`);grid.innerHTML='';for(let r=0;r<10;r++)for(let c=0;c<10;c++){const cell=document.createElement('button');cell.className='cell';cell.type='button';cell.dataset.r=r;cell.dataset.c=c;const ship=state.board[r][c],key=`${r},${c}`,shot=shots.has(key);if(ship&& (side==='player'||reveal||shot&&ship.sunk))cell.classList.add(ship.sunk?'sunk':'ship');if(shot){if(ship){cell.classList.remove('ship');cell.classList.add(ship.sunk?'sunk':'hit');cell.textContent=ship.sunk?'✦':'×'}else{cell.classList.add('miss');cell.textContent='•'}}if(side==='enemy'&&!gameOver)cell.addEventListener('click',playerFire);else cell.disabled=true;cell.setAttribute('aria-label',`${String.fromCharCode(65+r)}${c+1}`);grid.appendChild(cell)}renderTracker(side,state)}
+// Render both grids and current controls.
+function render(){renderBoard('player',player,aiShots,gameOver);renderBoard('enemy',enemy,playerShots,gameOver);$('randomize').disabled=playerShots.size>0||gameOver;$('new-game').hidden=!gameOver}
+// Make a coordinate key for sets and comparisons.
+function key(r,c){return `${r},${c}`}
+// Resolve a shot against a board and return its result.
+function resolveShot(state,r,c){const k=key(r,c);const ship=state.board[r][c];if(!ship)return {kind:'MISS'};ship.hits.add(k);if(ship.hits.size===ship.size){ship.sunk=true;return {kind:'SUNK',ship}}return {kind:'HIT',ship}}
+// Announce the current turn and latest event.
+function setStatus(text){$('status').textContent=text}
+// Handle a player's click on an enemy cell.
+function playerFire(event){if(turn!=='player'||gameOver)return;const r=+event.currentTarget.dataset.r,c=+event.currentTarget.dataset.c,k=key(r,c);if(playerShots.has(k))return;playerShots.add(k);const result=resolveShot(enemy,r,c);const message=result.kind==='MISS'?'You fired and missed.':result.kind==='HIT'?`You hit the enemy ${result.ship.name}.`:`You sank the enemy ${result.ship.name}!`;if(enemy.ships.every(s=>s.sunk)){gameOver=true;turn='over';setStatus('You win! All enemy ships are sunk.');render();return}turn='ai';setStatus(`${message} AI is thinking…`);render();setTimeout(aiFire,300+Math.random()*300)}
+// Add a coordinate to the AI target queue if it is valid and unfired.
+function queueCandidate(r,c){const k=key(r,c);if(r>=0&&r<10&&c>=0&&c<10&&!aiShots.has(k)&&!aiQueue.some(p=>p[0]===r&&p[1]===c))aiQueue.push([r,c])}
+// Build targets around unresolved hits, inferring a line after two hits.
+function buildAiQueue(){aiQueue=[];for(const ship of [...new Set(aiUnresolved.map(h=>h.ship))]){const hits=aiUnresolved.filter(h=>h.ship===ship).map(h=>h.pos);if(hits.length>=2){const sameRow=hits.every(p=>p[0]===hits[0][0]);const dr=sameRow?0:1,dc=sameRow?1:0;const sorted=hits.slice().sort((a,b)=>(a[0]*10+a[1])-(b[0]*10+b[1]));queueCandidate(sorted[0][0]-dr,sorted[0][1]-dc);queueCandidate(sorted[sorted.length-1][0]+dr,sorted[sorted.length-1][1]+dc)}else{for(const [dr,dc] of dirs)queueCandidate(hits[0][0]+dr,hits[0][1]+dc)}if(aiQueue.length)break}}
+// Pick the AI's next never-fired coordinate using hunt or target mode.
+function chooseAiTarget(){buildAiQueue();if(aiQueue.length)return aiQueue.shift();let r,c;do{r=Math.floor(Math.random()*10);c=Math.floor(Math.random()*10)}while(aiShots.has(key(r,c)));return [r,c]}
+// Fire the AI shot after its thinking delay.
+function aiFire(){if(gameOver)return;const [r,c]=chooseAiTarget(),k=key(r,c);aiShots.add(k);const result=resolveShot(player,r,c);if(result.kind==='HIT')aiUnresolved.push({pos:[r,c],ship:result.ship});if(result.kind==='SUNK')aiUnresolved=aiUnresolved.filter(h=>h.ship!==result.ship);if(player.ships.every(s=>s.sunk)){gameOver=true;turn='over';setStatus('The AI wins. Your fleet has been sunk.');render();return}const message=result.kind==='MISS'?`AI fired at ${String.fromCharCode(65+r)}${c+1}: MISS.`:result.kind==='HIT'?`AI fired at ${String.fromCharCode(65+r)}${c+1}: HIT.`:`AI fired at ${String.fromCharCode(65+r)}${c+1}: SUNK your ${result.ship.name}.`;turn='player';setStatus(`${message} Your turn.`);render()}
+// Start or fully reset a game.
+function newGame(){player=placeFleet();enemy=placeFleet();playerShots=new Set();aiShots=new Set();aiUnresolved=[];aiQueue=[];turn='player';gameOver=false;setStatus('Your turn. Fire on the enemy grid.');render()}
+// Randomize only before the first player shot.
+function randomize(){if(!playerShots.size&&!gameOver){player=placeFleet();setStatus('Your fleet was re-randomized. Your turn.');render()}}
+renderLabels();$('randomize').addEventListener('click',randomize);$('new-game').addEventListener('click',newGame);newGame();
+</script>
+</body>
+</html>
